@@ -1,0 +1,7 @@
+- Take dates as parameters: start-end
+- Optionally take kind of report to output, defaulting to all of them
+- Reports:
+  - Subjects and recipients of emails sent on those dates [filter?]
+  - Trello cards in Done on those dates, archived or not
+  - Events scheduled on those dates (public events only)
+
