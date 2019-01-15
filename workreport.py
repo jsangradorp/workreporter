@@ -2,7 +2,9 @@ from __future__ import print_function
 from googleapiclient.discovery import build
 from httplib2 import Http
 from oauth2client import file, client, tools
+#from trello import TrelloAPI
 
+import requests, json
 import datetime
 
 # encoding=utf8
@@ -14,8 +16,8 @@ class GmailReporter:
     # If modifying these scopes, delete the file token.json.
     SCOPES = 'https://www.googleapis.com/auth/gmail.readonly'
 
-    def __init__(self):
-        self.service = None
+    def __init__(self, token_filename, credentials_filename):
+        self.authorize(token_filename, credentials_filename)
     
     def authorize(self, token_filename, credentials_filename):
         # The file token.json stores the user's access and refresh tokens, and is
@@ -31,7 +33,7 @@ class GmailReporter:
         self.service = build('gmail', 'v1', http=creds.authorize(Http()))
 
     def build_report(self, from_datetime, to_datetime):
-        results = self.service.users().messages().list(userId='me', labelIds=["SENT"], q="after:2019/1/14 before:2019/1/15").execute()
+        results = self.service.users().messages().list(userId='me', labelIds=["SENT"], q="after:{} before:{}".format(from_datetime, to_datetime)).execute()
         messages = results.get('messages', [])
 
         report = []
@@ -44,8 +46,8 @@ class GCalendarReporter:
     # If modifying these scopes, delete the file token.json.
     SCOPES = 'https://www.googleapis.com/auth/calendar.readonly'
 
-    def __init__(self):
-        self.service = None
+    def __init__(self, token_filename, credentials_filename):
+        self.authorize(token_filename, credentials_filename)
     
     def authorize(self, token_filename, credentials_filename):
         # The file token.json stores the user's access and refresh tokens, and is     
@@ -72,22 +74,44 @@ class GCalendarReporter:
 
 class TrelloReporter:
 
-    def build_report(self):
-        pass
+    def __init__(self, token_filename, credentials_filename):
+        self.authorize(token_filename, credentials_filename)
+
+    def authorize(self, token_filename, credentials_filename):
+        creds = json.load(open(credentials_filename))
+        self._apikey = creds['api_key']
+        self._listid = creds['list_id']
+        self._token = json.load(open(token_filename))["token"]
+
+    def build_report(self, from_datetime, to_datetime):
+        resp = requests.get("https://trello.com/1/lists/%s/cards" % (self._listid),
+                params=dict(
+                    key=self._apikey,
+                    token=self._token,
+                    since=from_datetime,
+                    before=to_datetime,
+                    filter='all',
+                    fields='id,name,badges,labels'),
+                data=None)
+        resp.raise_for_status()
+        return map(lambda x: x['name'], json.loads(resp.content))
 
 class WorkReporter:
 
     def __init__(self):
-        self.gcalreporter = GCalendarReporter()
-        self.gcalreporter.authorize('gcal_token.json', 'gcal_credentials.json')
-        self.gmailreporter = GmailReporter()
-        self.gmailreporter.authorize('gmail_token.json', 'gmail_credentials.json')
+        self.gcalreporter = GCalendarReporter('gcal_token.json', 'gcal_credentials.json')
+        self.gmailreporter = GmailReporter('gmail_token.json', 'gmail_credentials.json')
+        self.trelloreporter = TrelloReporter('trello_token.json', 'trello_credentials.json')
 
     def output_report(self):
         today = (datetime.datetime.utcnow().date()).isoformat() + 'T00:00:00.000Z' # 'Z' indicates UTC time
         yesterday = (datetime.datetime.utcnow().date() - datetime.timedelta(1)).isoformat() + 'T00:00:00.000Z' # 'Z' indicates UTC time
-        print(self.gcalreporter.build_report(yesterday, today))
-        print(self.gmailreporter.build_report(yesterday, today))
+        report = []
+        report += self.gcalreporter.build_report(yesterday, today)
+        report += self.gmailreporter.build_report(yesterday, today)
+        report += self.trelloreporter.build_report(yesterday, today)
+        report.sort()
+        [print(line) for line in report]
 
 def main():
     workreporter = WorkReporter()
