@@ -33,13 +33,15 @@ class GmailReporter:
         self.service = build('gmail', 'v1', http=creds.authorize(Http()))
 
     def build_report(self, from_datetime, to_datetime):
-        results = self.service.users().messages().list(userId='me', labelIds=["SENT"], q="after:{} before:{}".format(from_datetime, to_datetime)).execute()
+        start_date = from_datetime.isoformat().replace("-", "/")
+        end_date = to_datetime.isoformat().replace("-", "/")
+        q = "after:{} before:{}".format(start_date, end_date)
+        results = self.service.users().messages().list(userId='me', labelIds=["SENT"], q=q).execute()
         messages = results.get('messages', [])
-
         report = []
         for message in messages:
             message = self.service.users().messages().get(userId="me", id=message['id']).execute()
-            report.append("{} {} {} {}".format("Sent", filter(lambda x: x['name'] == 'Subject', message['payload']['headers'])[0]['value'], "to", filter(lambda x: x['name'] == 'To', message['payload']['headers'])[0]['value']))
+            report.append("{} {} {}".format(filter(lambda x: x['name'] == 'Subject', message['payload']['headers'])[0]['value'], "sent to", filter(lambda x: x['name'] == 'To', message['payload']['headers'])[0]['value']))
         return report
 
 class GCalendarReporter:
@@ -63,7 +65,9 @@ class GCalendarReporter:
         self.service = build('calendar', 'v3', http=creds.authorize(Http()))               
 
     def build_report(self, from_datetime, to_datetime):
-        events_result = self.service.events().list(calendarId='primary', timeMin=from_datetime, timeMax=to_datetime,
+        start_date = from_datetime.isoformat() + "T00:00:00.000Z"
+        end_date = to_datetime.isoformat() + "T00:00:00.000Z"
+        events_result = self.service.events().list(calendarId='primary', timeMin=start_date, timeMax=end_date,
                                             maxResults=100, singleEvents=True,
                                             orderBy='startTime').execute()
         events = events_result.get('items', [])
@@ -84,12 +88,14 @@ class TrelloReporter:
         self._token = json.load(open(token_filename))["token"]
 
     def build_report(self, from_datetime, to_datetime):
+        start_date = from_datetime.isoformat() + "T00:00:00.000Z"
+        end_date = to_datetime.isoformat() + "T00:00:00.000Z"
         resp = requests.get("https://trello.com/1/lists/%s/cards" % (self._listid),
                 params=dict(
                     key=self._apikey,
                     token=self._token,
-                    since=from_datetime,
-                    before=to_datetime,
+                    since=start_date,
+                    before=end_date,
                     filter='all',
                     fields='id,name,badges,labels'),
                 data=None)
@@ -103,9 +109,13 @@ class WorkReporter:
         self.gmailreporter = GmailReporter('gmail_token.json', 'gmail_credentials.json')
         self.trelloreporter = TrelloReporter('trello_token.json', 'trello_credentials.json')
 
+    def output_report_header(self):
+        print("These are some of the things I did yesterday:\n")
+
     def output_report(self):
-        today = (datetime.datetime.utcnow().date()).isoformat() + 'T00:00:00.000Z' # 'Z' indicates UTC time
-        yesterday = (datetime.datetime.utcnow().date() - datetime.timedelta(1)).isoformat() + 'T00:00:00.000Z' # 'Z' indicates UTC time
+        self.output_report_header()
+        today = datetime.datetime.utcnow().date()
+        yesterday = datetime.datetime.utcnow().date() - datetime.timedelta(1)
         report = []
         report += self.gcalreporter.build_report(yesterday, today)
         report += self.gmailreporter.build_report(yesterday, today)
