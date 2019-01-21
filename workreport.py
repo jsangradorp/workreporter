@@ -110,12 +110,12 @@ class WorkReporter:
         self.trelloreporter = TrelloReporter('trello_token.json', 'trello_credentials.json')
 
     def output_report_header(self):
-        print("These are some of the things I did yesterday:\n")
+        print("These are some of the things I did the last seven days:\n")
 
     def output_report(self):
         self.output_report_header()
         today = datetime.datetime.utcnow().date()
-        yesterday = datetime.datetime.utcnow().date() - datetime.timedelta(1)
+        yesterday = datetime.datetime.utcnow().date() - datetime.timedelta(7)
         report = []
         report += self.gcalreporter.build_report(yesterday, today)
         report += self.gmailreporter.build_report(yesterday, today)
